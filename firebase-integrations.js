@@ -13,7 +13,7 @@ if (firebaseReady) {
   // Force Firebase Auth to retain the session across refreshes and browser restarts.
   persistenceReady = setPersistence(auth, browserLocalPersistence).catch(err => {
     console.error("Firebase local persistence could not be enabled:", err);
-    throw new Error("Sesi login tidak dapat disimpan di browser. Periksa browser, domain GitHub Pages, dan konfigurasi Firebase. " + (err.message || ""));
+    throw new Error("Sesi login tidak dapat disimpan di browser. Periksa pengaturan browser dan coba kembali. " + (err.message || ""));
   });
 } else {
   console.warn("Pasar Purwakarta: isi konfigurasi Firebase di config.js untuk mengaktifkan login dan database.");
@@ -27,10 +27,10 @@ const errorMessage = e => ({
   "auth/wrong-password":"Password salah.",
   "auth/weak-password":"Password minimal 6 karakter.",
   "auth/invalid-email":"Format email tidak valid.",
-  "auth/operation-not-allowed":"Aktifkan metode Email/Password di Firebase Authentication.",
+  "auth/operation-not-allowed":"Metode masuk belum aktif. Silakan hubungi pengelola.",
   "auth/network-request-failed":"Koneksi internet bermasalah. Periksa koneksi lalu coba lagi.",
-  "permission-denied":"Akses Firestore ditolak. Periksa Firestore Rules.",
-  "failed-precondition":"Periksa konfigurasi Firestore atau indeks yang diminta Firebase."
+  "permission-denied":"Akses data ditolak. Silakan hubungi pengelola.",
+  "failed-precondition":"Data belum dapat diproses. Silakan coba kembali."
 }[e.code] || e.message || "Terjadi kesalahan.");
 async function profileFor(user){
   const snap=await getDoc(doc(db,"users",user.uid));if(!snap.exists())return null;
@@ -40,7 +40,7 @@ async function profileFor(user){
 }
 window.ppAuthErrorMessage = errorMessage;
 window.ppAuth = async ({mode,email,password,role}) => {
-  if(!firebaseReady) throw new Error("Isi konfigurasi Firebase Web di config.js, lalu commit ulang ke GitHub.");
+  if(!firebaseReady) throw new Error("Layanan akun belum siap. Periksa koneksi internet atau coba kembali nanti.");
   await persistenceReady;
   let credential;
   if(mode==="register"){
@@ -54,7 +54,7 @@ window.ppAuth = async ({mode,email,password,role}) => {
         createdAt:serverTimestamp()
       });
     } catch (e) {
-      throw new Error("Akun berhasil dibuat di Authentication, tetapi profil Firestore gagal disimpan. Periksa Firestore Rules. Detail: " + (e.message || e));
+      throw new Error("Akun berhasil dibuat, tetapi profil belum tersimpan. Silakan coba kembali atau hubungi pengelola. Detail: " + (e.message || e));
     }
     await signOut(auth);
     return {ok:true,mode:"register",role,message:role==="seller"
@@ -65,7 +65,7 @@ window.ppAuth = async ({mode,email,password,role}) => {
   const profile=await profileFor(credential.user);
   if(!profile) {
     await signOut(auth);
-    throw new Error("Login berhasil di Firebase Authentication, tetapi profil users/" + credential.user.uid + " belum tersedia. Pastikan dokumen Firestore users memakai UID yang sama.");
+    throw new Error("Login berhasil, tetapi profil akun belum ditemukan. Silakan hubungi pengelola.");
   }
   const accountRole=profile.role || "customer";
   return {ok:true,mode:"login",role:accountRole,message:`Berhasil masuk sebagai ${accountRole}.`,profile};
@@ -75,7 +75,7 @@ window.ppGetCurrentProfile = async () => {
   return await profileFor(auth.currentUser);
 };
 window.ppSaveProfile = async data => {
-  if(!firebaseReady)throw new Error("Konfigurasi Firebase belum tersedia.");
+  if(!firebaseReady)throw new Error("Layanan belum siap. Periksa koneksi internet atau coba kembali nanti.");
   const user=auth.currentUser;if(!user)throw new Error("Silakan masuk terlebih dahulu.");
   const profile=await profileFor(user);if(!profile)throw new Error("Profil akun tidak ditemukan di Firestore.");
   await updateDoc(doc(db,"users",user.uid),{displayName:String(data.displayName||"").trim(),phone:String(data.phone||"").trim(),address:String(data.address||"").trim(),updatedAt:serverTimestamp()});
@@ -83,7 +83,7 @@ window.ppSaveProfile = async data => {
   return {ok:true,message:"Profil pelanggan berhasil disimpan."};
 };
 window.ppApplySeller = async data => {
-  if(!firebaseReady)throw new Error("Konfigurasi Firebase belum tersedia.");
+  if(!firebaseReady)throw new Error("Layanan belum siap. Periksa koneksi internet atau coba kembali nanti.");
   const user=auth.currentUser;if(!user)throw new Error("Silakan masuk terlebih dahulu.");
   const profile=await profileFor(user);if(!profile)throw new Error("Profil akun tidak ditemukan.");
   if(profile.role!=="customer")throw new Error("Formulir ini khusus akun pelanggan. Akun penjual/admin tidak perlu mengajukan lagi.");
@@ -98,13 +98,13 @@ async function uploadImage(file, folder="products"){
   if(!file || !file.size) return "";
   if(!file.type.startsWith("image/")) throw new Error("File harus berupa gambar.");
   if(file.size>8*1024*1024) throw new Error("Ukuran foto maksimal 8 MB.");
-  if(!cloudinaryReady) throw new Error("Isi Cloud Name dan Upload Preset Cloudinary di config.js untuk mengunggah foto. Login Firebase tidak memerlukan Cloudinary.");
+  if(!cloudinaryReady) throw new Error("Fitur unggah foto belum siap. Coba kembali nanti atau hubungi pengelola.");
   const data=new FormData();data.append("file",file);data.append("upload_preset",cloudinaryConfig.uploadPreset);data.append("folder",`pasar-purwakarta/${folder}`);
   const response=await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(cloudinaryConfig.cloudName)}/image/upload`,{method:"POST",body:data});
   const result=await response.json();if(!response.ok) throw new Error(result.error?.message||"Upload foto ke Cloudinary gagal.");return result.secure_url;
 }
 window.ppSaveProduct = async data => {
-  if(!firebaseReady) throw new Error("Isi konfigurasi Firebase di config.js terlebih dahulu.");
+  if(!firebaseReady) throw new Error("Layanan belum siap. Periksa koneksi internet atau coba kembali nanti.");
   const user=auth.currentUser;if(!user) throw new Error("Silakan masuk terlebih dahulu.");
   const profile=await profileFor(user);if(!profile) throw new Error("Profil akun tidak ditemukan di Firestore.");
   const isAdmin=profile.role==="admin";
@@ -141,11 +141,11 @@ window.ppLoadProducts = async () => {
     console.error("Gagal memuat katalog Firebase:",e);
     window.ppSetProducts?.([]);
     const catalogError=$("catalogLoadStatus");
-    if(catalogError)catalogError.textContent="Katalog gagal dimuat dari Firebase. Periksa koneksi internet dan Firestore Rules.";
+    if(catalogError)catalogError.textContent="Produk belum dapat dimuat. Periksa koneksi internet lalu coba lagi.";
   }
 };
 window.ppCreateOrders = async data => {
-  if(!firebaseReady)throw new Error("Konfigurasi Firebase belum tersedia.");
+  if(!firebaseReady)throw new Error("Layanan belum siap. Periksa koneksi internet atau coba kembali nanti.");
   const user=auth.currentUser;if(!user)throw new Error("Silakan masuk terlebih dahulu.");
   const profile=await profileFor(user);if(!profile)throw new Error("Profil pelanggan tidak ditemukan.");
   const inputItems=Array.isArray(data.items)&&data.items.length?data.items:[{productId:data.productId,quantity:data.quantity||1}];
@@ -183,7 +183,7 @@ window.ppCreateOrder = async data => window.ppCreateOrders({...data,items:[{prod
 
 const defaultPaymentSettings={bankName:"",bankAccountName:"",bankAccountNumber:"",qrisImageUrl:"",ewalletName:"",ewalletNumber:"",serviceFee:0,deliveryFee:0,instructions:"Silakan bayar sesuai total pesanan. Unggah bukti pembayaran di halaman Pesanan Saya. Pesanan diproses setelah admin memverifikasi pembayaran."};
 window.ppGetPaymentSettings=async()=>{
-  if(!firebaseReady)throw new Error("Konfigurasi Firebase belum tersedia.");
+  if(!firebaseReady)throw new Error("Layanan belum siap. Periksa koneksi internet atau coba kembali nanti.");
   const snap=await getDoc(doc(db,"paymentSettings","main"));
   return {...defaultPaymentSettings,...(snap.exists()?snap.data():{})};
 };
@@ -250,17 +250,17 @@ window.ppLoadOrders = async () => {
     }
     const items=docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt?.toMillis?.()||b.createdAt?.seconds||0)-(a.createdAt?.toMillis?.()||a.createdAt?.seconds||0));
     window.ppSetOrders?.(items);
-    const status=$("orderLoadStatus");if(status){status.textContent=queryErrors.length?"Sebagian pencarian riwayat tidak berhasil: "+queryErrors.join(" · "): (items.length?`Berhasil memuat ${items.length} data pesanan dari Firebase.`:"Belum ada dokumen pesanan yang cocok dengan akun ini. Jika admin melihat pesanan, periksa field customerId/customerUid/buyerId/userId pada dokumen tersebut." );}
+    const status=$("orderLoadStatus");if(status){status.textContent=queryErrors.length?"Sebagian pencarian riwayat tidak berhasil: "+queryErrors.join(" · "): (items.length?`Berhasil memuat ${items.length} pesanan.`:"Belum ada dokumen pesanan yang cocok dengan akun ini. Jika admin melihat pesanan, periksa field customerId/customerUid/buyerId/userId pada dokumen tersebut." );}
   }catch(e){
     console.error("Gagal memuat pesanan:",e);
-    const msg="Riwayat gagal dimuat dari Firebase: "+errorMessage(e)+". Pastikan Firestore Rules sudah diperbarui.";
+    const msg="Riwayat pesanan gagal dimuat: "+errorMessage(e)+". Silakan coba lagi.";
     const status=$("orderLoadStatus");if(status)status.textContent=msg;
     const el=$("orderList");if(el)el.innerHTML=`<div class="empty">${msg}</div>`;
     for(const id of ["sellerOrderTable","adminOrderTable"]){const el=$(id);if(el&&el.tagName==="TBODY")el.innerHTML=`<tr><td colspan="8">${msg}</td></tr>`;}
   }
 };
 window.ppUpdateOrderStatus = async (orderId,status) => {
-  if(!firebaseReady)throw new Error("Konfigurasi Firebase belum tersedia.");const allowed=["Menunggu konfirmasi","Diproses","Dikirim","Selesai","Dibatalkan"];if(!allowed.includes(status))throw new Error("Status pesanan tidak valid.");
+  if(!firebaseReady)throw new Error("Layanan belum siap. Periksa koneksi internet atau coba kembali nanti.");const allowed=["Menunggu konfirmasi","Diproses","Dikirim","Selesai","Dibatalkan"];if(!allowed.includes(status))throw new Error("Status pesanan tidak valid.");
   const user=auth.currentUser;if(!user)throw new Error("Silakan masuk terlebih dahulu.");const profile=await profileFor(user),ref=doc(db,"orders",String(orderId)),snap=await getDoc(ref);if(!snap.exists())throw new Error("Pesanan tidak ditemukan.");const order=snap.data();
   if(profile?.role!=="admin"&&order.sellerId!==user.uid)throw new Error("Hanya penjual pemilik pesanan atau admin yang dapat mengubah status.");await updateDoc(ref,{status,updatedAt:serverTimestamp()});await window.ppLoadOrders();return {ok:true};
 };
@@ -269,7 +269,7 @@ window.ppLoadSellerApplications = async () => {
   const user=auth.currentUser,profile=await profileFor(user);
   if(profile?.role!=="admin")return;
   const tbody=$("adminSellerApplications");if(!tbody)return;
-  tbody.innerHTML='<tr><td colspan="6">Memuat pengajuan dari Firebase...</td></tr>';
+  tbody.innerHTML='<tr><td colspan="6">Memuat pengajuan toko...</td></tr>';
   try{
     // Fetch the collection for admin, then filter client-side to include older records
     // where the status field may be missing or have a legacy value.
@@ -296,7 +296,7 @@ window.ppLoadSellerApplications = async () => {
   }
 };
 window.ppReviewSeller = async (uid,decision) => {
-  if(!firebaseReady)throw new Error("Konfigurasi Firebase belum tersedia.");if(!["approved","rejected"].includes(decision))throw new Error("Keputusan tidak valid.");const user=auth.currentUser,admin=await profileFor(user);if(!user||admin?.role!=="admin")throw new Error("Hanya admin yang dapat meninjau pengajuan.");
+  if(!firebaseReady)throw new Error("Layanan belum siap. Periksa koneksi internet atau coba kembali nanti.");if(!["approved","rejected"].includes(decision))throw new Error("Keputusan tidak valid.");const user=auth.currentUser,admin=await profileFor(user);if(!user||admin?.role!=="admin")throw new Error("Hanya admin yang dapat meninjau pengajuan.");
   const appRef=doc(db,"sellerApplications",String(uid)),appSnap=await getDoc(appRef);if(!appSnap.exists())throw new Error("Pengajuan tidak ditemukan.");const application=appSnap.data();
   if(decision==="approved"){await updateDoc(doc(db,"users",String(uid)),{role:"seller",sellerStatus:"approved",storeName:application.storeName,storeCategory:application.category,storeAddress:application.storeAddress,updatedAt:serverTimestamp()});await updateDoc(appRef,{status:"approved",reviewedAt:serverTimestamp(),reviewedBy:user.uid});}
   else await updateDoc(appRef,{status:"rejected",reviewedAt:serverTimestamp(),reviewedBy:user.uid});
@@ -306,7 +306,7 @@ window.ppReviewSeller = async (uid,decision) => {
 // Chat privat: satu percakapan per pasangan pembeli-penjual, pesan tersimpan di Firestore.
 function chatDocId(customerId,sellerId){return [String(customerId),String(sellerId)].sort().join("__");}
 window.ppOpenChatForOrder = async order => {
-  if(!firebaseReady)throw new Error("Konfigurasi Firebase belum tersedia.");
+  if(!firebaseReady)throw new Error("Layanan belum siap. Periksa koneksi internet atau coba kembali nanti.");
   const user=auth.currentUser;if(!user)throw new Error("Silakan masuk terlebih dahulu.");
   const profile=await profileFor(user);if(!profile)throw new Error("Profil akun tidak ditemukan.");
   const customerId=String(order.customerId||""),sellerId=String(order.sellerId||"");
@@ -365,7 +365,7 @@ if(firebaseReady){
       }
     },error=>{
       console.error("Firebase auth state error:",error);
-      setStatus("Sesi login tidak dapat diperiksa. Muat ulang halaman atau periksa konfigurasi Firebase.");
+      setStatus("Sesi login tidak dapat diperiksa. Muat ulang halaman atau coba kembali.");
     });
   }).catch(e=>{console.error(e);setStatus(e.message||"Gagal menyiapkan sesi login.");});
   window.ppLoadProducts();
