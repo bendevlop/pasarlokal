@@ -1,68 +1,30 @@
-# Pasar Purwakarta — Toko Nyata & Pengajuan Seller
+# Pasar Purwakarta — pembayaran manual dan verifikasi admin
 
-## Yang diperbaiki dalam paket ini
-- Pengajuan penjual ditampilkan dari koleksi Firestore `sellerApplications`, dibaca saat masuk ke Dasbor Admin dan setiap kali tombol **Muat ulang** ditekan.
-- Daftar pengajuan tidak hanya bergantung pada filter `status == pending`; dokumen lama dengan status kosong atau format status lama juga dapat muncul. Dokumen `approved` tidak ditampilkan lagi sebagai permohonan menunggu.
-- Jika pembacaan ditolak Firestore, tabel admin menampilkan pesan error yang menjelaskan bahwa role admin dan Rules perlu diperiksa.
-- Produk contoh telah dihapus. Katalog publik hanya menampilkan produk nyata dari koleksi `products` dengan `status: approved`.
-- Direktori toko dibentuk dari toko yang memiliki produk aktif di Firestore; toko fiktif tidak ditampilkan.
-- Label status toko bukan lagi “Demo”. Status diambil dari profil akun Firebase.
-- Penjual hanya dapat menyimpan produk memakai nama toko yang sudah disetujui admin di `users/{UID}.storeName`.
-- Produk, pengajuan toko, dan pesanan menggunakan Firestore, bukan data demo lokal. Favorit masih disimpan lokal di browser perangkat.
+Paket ini mempertahankan katalog, akun/role, toko penjual, keranjang multi-produk, riwayat pesanan, dan chat dari versi sebelumnya, serta menambahkan pembayaran manual.
 
-## Langkah pemasangan
-1. Unduh dan ekstrak ZIP.
-2. Ganti file di repositori GitHub Pages dengan seluruh isi folder `PasarPurwakarta-Toko-Nyata`.
-3. Pertahankan `config.js` yang berisi konfigurasi Firebase dan Cloudinary proyek Anda.
-4. Buka Firebase Console → **Firestore Database → Rules**.
-5. Salin seluruh isi `firestore.rules` dari paket ini ke tab Rules, lalu klik **Publish**.
-6. Tunggu GitHub Pages selesai deploy, buka website, lalu tekan `Ctrl + Shift + R`.
+## Metode pembayaran
+- Transfer bank
+- QRIS
+- E-wallet
+- Tunai saat barang diterima (COD)
 
-## Pengaturan Firebase yang diperlukan
-- Authentication → Sign-in method: aktifkan **Email/Password**.
-- Authentication → Settings → Authorized domains: pastikan domain GitHub Pages terdaftar.
-- Dokumen admin harus berada di `users/{UID}` dan field `role` bernilai `admin`.
-- Pengajuan penjual harus berada di koleksi `sellerApplications`, dengan Document ID sama dengan UID pelanggan. Field umum: `uid`, `ownerName`, `storeName`, `category`, `phone`, `email`, `storeAddress`, `status: "pending"`, `submittedAt`.
+Untuk Transfer, QRIS, dan E-wallet, pembeli mengirim bukti pembayaran berupa gambar. Bukti diunggah ke Cloudinary dan URL-nya disimpan pada dokumen `orders`. Admin memeriksa bukti melalui tabel **Verifikasi pembayaran** lalu memilih **Setujui** atau **Tolak**. COD berstatus `Bayar saat diterima` dan tidak meminta bukti transfer.
 
-## Jika pengajuan masih tidak terlihat
-1. Pastikan Anda login dengan akun yang dokumen `users/{UID}`-nya memiliki `role: admin`.
-2. Buka Dasbor Admin, tekan **Muat ulang** pada bagian Pengajuan Penjual.
-3. Jika muncul pesan `Gagal memuat dari Firebase`, salin pesan tersebut. Periksa bahwa `firestore.rules` terbaru sudah dipublikasikan.
-4. Periksa nama koleksi tepat `sellerApplications` (huruf besar-kecil berpengaruh).
-5. Pastikan UID yang dipakai dokumen pengajuan sama dengan UID akun yang diajukan.
+## Sebelum menerbitkan
+1. Pertahankan `config.js` milik proyek Anda yang berisi konfigurasi Firebase dan Cloudinary yang benar. Jangan mengganti dengan konfigurasi contoh dari ZIP jika konfigurasi Anda sudah benar.
+2. Pastikan Cloudinary `cloudName` dan `uploadPreset` sudah terisi dan upload preset mengizinkan unsigned image upload. Bukti pembayaran akan disimpan di folder `pasar-purwakarta/payment-proofs`.
+3. Ganti file website lama dengan file dari folder `PasarPurwakarta-Toko-Nyata`, lalu commit/push ke GitHub Pages.
+4. Salin isi `firestore.rules` ke Firebase Console → Firestore Database → Rules, lalu klik **Publish**.
+5. Login sebagai admin dan buka **Dasbor admin → Pengaturan pembayaran**. Isi nama bank, nama pemilik, nomor rekening, URL gambar QRIS, nama/nomor e-wallet, dan instruksi. Klik **Simpan pengaturan pembayaran**.
+6. URL QRIS harus merupakan URL HTTPS yang dapat dibuka publik untuk menampilkan gambar QRIS. Jangan menggunakan URL sementara yang kedaluwarsa.
+7. Uji menggunakan akun pembeli: buat pesanan, pilih metode non-tunai, lakukan pembayaran di luar website, lalu buka **Pesanan Saya** dan unggah gambar bukti. Login admin, buka **Verifikasi pembayaran**, periksa bukti, lalu setujui/tolak.
+8. Uji COD: pilih tunai saat barang diterima. Status pembayaran akan menunjukkan `Bayar saat diterima`.
 
-## Alur toko dan pesanan
-- Pelanggan mengajukan toko dari halaman Akun tanpa membuat akun baru.
-- Admin menyetujui pengajuan; profil pengguna diubah menjadi `role: seller`, `sellerStatus: approved`, dan data nama/alamat toko disimpan.
-- Penjual menambahkan produk dari modal. Produk tersimpan ke `products` Firestore dan muncul di katalog.
-- Pelanggan membuat pesanan dari produk aktif. Pesanan tersimpan di `orders` dan ditampilkan sesuai hak akses pelanggan, penjual pemilik produk, dan admin.
-- Pembayaran COD/transfer/QRIS hanya dicatat sebagai pilihan; belum ada pemrosesan pembayaran otomatis. Ongkir dikonfirmasi penjual.
+## Struktur data baru
+Dokumen `paymentSettings/main` menyimpan pengaturan tujuan pembayaran. Setiap dokumen `orders` memiliki `paymentMethod`, `paymentStatus`, `paymentProofUrl`, serta timestamp pengiriman/verifikasi bukti jika tersedia.
 
-## Keamanan
-- Jangan memakai aturan Firestore terbuka seperti `allow read, write: if true`.
-- Firebase Web config memang dipakai di frontend; jangan menaruh API Secret Cloudinary di `config.js`.
-- Batasi Cloudinary unsigned upload preset berdasarkan format dan ukuran file.
-
-
-## Pembaruan marketplace (keranjang, pesanan, chat, tampilan HP)
-
-1. Upload semua file paket ini ke repositori GitHub Pages dan timpa versi sebelumnya. Jangan mengganti `config.js` dengan konfigurasi contoh jika sudah berisi konfigurasi Firebase/Cloudinary Anda sendiri.
-2. Di Firebase Console → Firestore Database → Rules, tempel isi `firestore.rules` yang ada di paket ini, lalu klik **Publish**. Aturan baru menambahkan akses chat hanya untuk pembeli dan penjual yang menjadi peserta percakapan.
-3. Pastikan Firestore memakai koleksi `orders`, `products`, `users`, `sellerApplications`, `chats`; pesan chat tersimpan pada subkoleksi `chats/{chatId}/messages`.
-4. Fitur keranjang menyimpan pilihan barang di browser perangkat. Checkout membuat satu baris pesanan per produk, dengan nomor checkout yang sama; tiap penjual hanya melihat pesanan untuk tokonya, sedangkan pembeli melihat semua barang yang dikirim dalam checkout itu.
-5. Chat dapat dibuka dari tombol **Chat penjual** di halaman Pesanan saya atau **Chat pembeli** di tabel pesanan penjual. Chat baru dibuat saat salah satu pihak membuka chat dari pesanan.
-6. Jika halaman Pesanan saya masih kosong, login dengan akun pembeli yang sama yang digunakan saat checkout. Jika ada pesan kesalahan Firebase, cek Rules dan koleksi `orders`; dokumen harus memiliki `customerId` sama dengan UID pembeli serta `sellerId` sama dengan UID pemilik produk.
-7. Setelah commit GitHub, tunggu deployment selesai lalu muat ulang situs. Di smartphone, gunakan tombol **Segarkan dasbor** pada admin jika data baru belum muncul.
-
-Catatan: perubahan kode telah diperiksa sintaksnya, tetapi alur transaksi/chat belum dapat diuji terhadap proyek Firebase aktif Anda dari sini.
-
-
-## Perbaikan riwayat pesanan dan nama chat
-- Setelah data pesanan selesai dimuat, halaman Riwayat Pesanan dirender langsung dan tombol **Muat ulang pesanan** tersedia bila daftar masih kosong.
-- Akun pembeli memuat pesanan berdasarkan UID, serta mencoba mencari pesanan lama berdasarkan email untuk kompatibilitas data terdahulu. Firestore Rules membatasi hasil email ke email akun yang sedang login.
-- Nama pengirim chat hanya memakai nama profil/nama toko atau label Pembeli/Penjual/Admin; alamat email tidak dipakai sebagai nama pengirim chat.
-- Setelah memperbarui file, publish juga `firestore.rules` yang baru agar pesanan lama yang cocok dengan email dapat dibaca oleh pemilik akun.
-
-
-## Perbaikan riwayat pesanan pembeli
-Versi ini memuat pesanan berdasarkan UID pembeli dan, untuk kompatibilitas data lama, email akun. Tampilan riwayat juga mengenali beberapa nama field pembeli lama. Jika pembacaan Firebase ditolak, pesan kesalahan akan ditampilkan di atas daftar Pesanan Saya. Untuk menguji, login menggunakan akun pembeli yang sama dengan saat checkout, buka Pesanan Saya, lalu tekan Muat ulang pesanan. Jika masih kosong, periksa dokumen di koleksi `orders`: pastikan `customerId` berisi UID akun pembeli dan `customerEmail` berisi email Firebase akun tersebut.
+## Catatan penting
+- Ini adalah **konfirmasi manual**, bukan verifikasi otomatis dari bank/e-wallet. Admin harus memeriksa transaksi pada rekening atau aplikasi pembayaran sebelum menyetujui.
+- Jangan menyimpan API secret Cloudinary atau kredensial rahasia di JavaScript frontend. Upload preset harus dikonfigurasi untuk upload tanpa secret.
+- Pembayaran ditujukan ke rekening pengelola, sesuai pilihan pengelola marketplace. Pengelola perlu mengatur proses pencatatan dan penyelesaian dana ke masing-masing penjual.
+- Saya telah memeriksa sintaks JavaScript dan struktur ZIP, tetapi belum menguji transaksi pada proyek Firebase/Cloudinary aktif Anda.
