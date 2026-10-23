@@ -1,0 +1,97 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function userDoc(uid) { return get(/databases/$(database)/documents/users/$(uid)); }
+    function isAdmin() { return signedIn() && userDoc(request.auth.uid).data.role == 'admin'; }
+    function isApprovedSeller() { return signedIn() && userDoc(request.auth.uid).data.role == 'seller' && userDoc(request.auth.uid).data.sellerStatus == 'approved'; }
+
+    match /users/{uid} {
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.uid == uid
+        && request.resource.data.role in ['customer', 'seller']
+        && (request.resource.data.role != 'seller' || request.resource.data.sellerStatus == 'pending');
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow update: if isAdmin() || (signedIn() && request.auth.uid == uid
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.sellerStatus == resource.data.sellerStatus
+        && request.resource.data.uid == resource.data.uid);
+      allow delete: if isAdmin();
+    }
+
+    match /sellerApplications/{uid} {
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.uid == uid
+        && request.resource.data.status == 'pending';
+      // Admin can review all applications; users can read only their own application.
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow update: if isAdmin()
+        || (signedIn() && request.auth.uid == uid
+          && resource.data.uid == uid
+          && resource.data.status == 'rejected'
+          && request.resource.data.status == 'pending'
+          && request.resource.data.uid == uid);
+      allow delete: if isAdmin();
+    }
+
+    match /products/{productId} {
+      allow read: if resource.data.status == 'approved' || isAdmin() || (signedIn() && resource.data.ownerId == request.auth.uid);
+      allow create: if (isAdmin() || (isApprovedSeller() && request.resource.data.ownerId == request.auth.uid))
+        && request.resource.data.status == 'approved'
+        && request.resource.data.price is number && request.resource.data.price > 0;
+      allow update, delete: if isAdmin() || (isApprovedSeller() && resource.data.ownerId == request.auth.uid
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.status == resource.data.status);
+    }
+
+
+    match /chats/{chatId} {
+      allow create: if signedIn()
+        && request.resource.data.customerId is string
+        && request.resource.data.sellerId is string
+        && (request.auth.uid == request.resource.data.customerId || request.auth.uid == request.resource.data.sellerId)
+        && request.resource.data.participants is list
+        && request.resource.data.participants.hasAll([request.resource.data.customerId, request.resource.data.sellerId]);
+      allow get: if signedIn() && (chatId.matches('.*' + request.auth.uid + '.*') || request.auth.uid == resource.data.customerId || request.auth.uid == resource.data.sellerId);
+      allow list: if signedIn() && (request.auth.uid == resource.data.customerId || request.auth.uid == resource.data.sellerId);
+      allow update: if signedIn()
+        && (request.auth.uid == resource.data.customerId || request.auth.uid == resource.data.sellerId)
+        && request.resource.data.customerId == resource.data.customerId
+        && request.resource.data.sellerId == resource.data.sellerId
+        && request.resource.data.participants == resource.data.participants;
+      allow delete: if isAdmin();
+
+      match /messages/{messageId} {
+        function chatDoc() { return get(/databases/$(database)/documents/chats/$(chatId)); }
+        function isChatParticipant() {
+          return signedIn() && (request.auth.uid == chatDoc().data.customerId || request.auth.uid == chatDoc().data.sellerId);
+        }
+        allow read: if isChatParticipant();
+        allow create: if isChatParticipant()
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.message is string
+          && request.resource.data.message.size() > 0
+          && request.resource.data.message.size() <= 2000;
+        allow update, delete: if false;
+      }
+    }
+
+    match /orders/{orderId} {
+      allow create: if signedIn()
+        && request.resource.data.customerId == request.auth.uid
+        && request.resource.data.sellerId is string
+        && request.resource.data.productId is string
+        && request.resource.data.quantity is int && request.resource.data.quantity > 0
+        && request.resource.data.total is number
+        && request.resource.data.status == 'Menunggu konfirmasi'
+        && get(/databases/$(database)/documents/products/$(request.resource.data.productId)).data.status == 'approved'
+        && get(/databases/$(database)/documents/products/$(request.resource.data.productId)).data.ownerId == request.resource.data.sellerId
+        && get(/databases/$(database)/documents/products/$(request.resource.data.productId)).data.price == request.resource.data.unitPrice;
+      allow read: if isAdmin() || (signedIn() && (resource.data.customerId == request.auth.uid || resource.data.sellerId == request.auth.uid));
+      allow update: if isAdmin() || (signedIn() && resource.data.sellerId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','updatedAt'])
+        && request.resource.data.status in ['Menunggu konfirmasi','Diproses','Dikirim','Selesai','Dibatalkan']);
+      allow delete: if isAdmin();
+    }
+  }
+}
