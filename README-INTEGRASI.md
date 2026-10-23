@@ -55,3 +55,14 @@
 7. Setelah commit GitHub, tunggu deployment selesai lalu muat ulang situs. Di smartphone, gunakan tombol **Segarkan dasbor** pada admin jika data baru belum muncul.
 
 Catatan: perubahan kode telah diperiksa sintaksnya, tetapi alur transaksi/chat belum dapat diuji terhadap proyek Firebase aktif Anda dari sini.
+
+
+## Perbaikan riwayat pesanan dan nama chat
+- Setelah data pesanan selesai dimuat, halaman Riwayat Pesanan dirender langsung dan tombol **Muat ulang pesanan** tersedia bila daftar masih kosong.
+- Akun pembeli memuat pesanan berdasarkan UID, serta mencoba mencari pesanan lama berdasarkan email untuk kompatibilitas data terdahulu. Firestore Rules membatasi hasil email ke email akun yang sedang login.
+- Nama pengirim chat hanya memakai nama profil/nama toko atau label Pembeli/Penjual/Admin; alamat email tidak dipakai sebagai nama pengirim chat.
+- Setelah memperbarui file, publish juga `firestore.rules` yang baru agar pesanan lama yang cocok dengan email dapat dibaca oleh pemilik akun.
+
+
+## Perbaikan riwayat pesanan pembeli
+Versi ini memuat pesanan berdasarkan UID pembeli dan, untuk kompatibilitas data lama, email akun. Tampilan riwayat juga mengenali beberapa nama field pembeli lama. Jika pembacaan Firebase ditolak, pesan kesalahan akan ditampilkan di atas daftar Pesanan Saya. Untuk menguji, login menggunakan akun pembeli yang sama dengan saat checkout, buka Pesanan Saya, lalu tekan Muat ulang pesanan. Jika masih kosong, periksa dokumen di koleksi `orders`: pastikan `customerId` berisi UID akun pembeli dan `customerEmail` berisi email Firebase akun tersebut.
