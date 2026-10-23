@@ -28,3 +28,12 @@ Dokumen `paymentSettings/main` menyimpan pengaturan tujuan pembayaran. Setiap do
 - Jangan menyimpan API secret Cloudinary atau kredensial rahasia di JavaScript frontend. Upload preset harus dikonfigurasi untuk upload tanpa secret.
 - Pembayaran ditujukan ke rekening pengelola, sesuai pilihan pengelola marketplace. Pengelola perlu mengatur proses pencatatan dan penyelesaian dana ke masing-masing penjual.
 - Saya telah memeriksa sintaks JavaScript dan struktur ZIP, tetapi belum menguji transaksi pada proyek Firebase/Cloudinary aktif Anda.
+
+
+## Opsi pengambilan barang dan biaya admin
+
+- Saat checkout, pembeli memilih **Dikirim ke alamat** atau **Ambil sendiri**. Pilihan ambil sendiri tidak meminta alamat dan ongkirnya Rp0.
+- Di Dasbor Admin → Pengaturan pembayaran, admin dapat mengatur **Biaya jasa per pesanan (Rp)** dan **Biaya kirim per pesanan (Rp)**. Nilai harus angka rupiah dan dapat diisi 0.
+- Setiap dokumen pesanan menyimpan `productSubtotal`, `serviceFee`, `fulfillmentMethod`, `deliveryFee`, `shippingFee`, dan `total`. Total dihitung oleh integrasi berdasarkan harga produk serta pengaturan Firebase yang tersimpan; angka yang dikirim dari halaman checkout tidak dijadikan sumber biaya.
+- Untuk checkout multi-produk, aplikasi membuat satu dokumen pesanan untuk setiap jenis produk. Karena itu biaya jasa dikenakan pada setiap dokumen pesanan; biaya kirim juga dihitung per dokumen pesanan jika memilih pengiriman. Atur biaya admin dengan mempertimbangkan perilaku ini.
+- Pesanan yang sudah dibuat menyimpan nilai biaya pada saat checkout. Perubahan tarif oleh admin berlaku untuk pesanan baru, tidak mengubah pesanan lama.

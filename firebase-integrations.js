@@ -161,13 +161,19 @@ window.ppCreateOrders = async data => {
     normalized.push({productId,product,quantity});
   }
   if(!normalized.length)throw new Error("Keranjang kosong atau produk tidak tersedia.");
-  const phone=String(data.phone||"").trim(),address=String(data.address||"").trim(),customerName=String(data.customerName||profile.displayName||"").trim();
-  if(!customerName||!phone||!address)throw new Error("Lengkapi nama penerima, nomor WhatsApp, dan alamat pengiriman.");
+  const phone=String(data.phone||"").trim(),fulfillmentMethod=String(data.fulfillmentMethod||"Delivery")==="Pickup"?"Pickup":"Delivery",address=String(data.address||"").trim(),customerName=String(data.customerName||profile.displayName||"").trim();
+  if(!customerName||!phone)throw new Error("Lengkapi nama penerima dan nomor WhatsApp.");
+  if(fulfillmentMethod==="Delivery"&&!address)throw new Error("Masukkan alamat pengiriman atau pilih Ambil sendiri.");
+  const settingsSnap=await getDoc(doc(db,"paymentSettings","main"));
+  const feeSettings=settingsSnap.exists()?settingsSnap.data():{};
+  const serviceFee=Math.max(0,Math.floor(Number(feeSettings.serviceFee)||0));
+  const deliveryFee=fulfillmentMethod==="Pickup"?0:Math.max(0,Math.floor(Number(feeSettings.deliveryFee)||0));
   const orderNumber="PP-"+Date.now().toString().slice(-8)+"-"+Math.random().toString(36).slice(2,5).toUpperCase();
   const batch=writeBatch(db),ids=[];
   normalized.forEach(({productId,product,quantity},index)=>{
     const ref=doc(collection(db,"orders"));ids.push(ref.id);
-    const order={orderNumber,checkoutGroup:orderNumber,itemIndex:index+1,itemCount:normalized.length,productId,productName:String(product.name||""),category:String(product.category||""),photo:String(product.photo||""),storeName:String(product.store||""),sellerId:String(product.ownerId||""),customerId:user.uid,customerEmail:user.email||"",customerName,phone,address,note:String(data.note||"").trim(),quantity,unitPrice:Number(product.price),total:Number(product.price)*quantity,paymentMethod:String(data.paymentMethod||"COD"),paymentStatus:String(data.paymentMethod||"COD")==="COD"?"Bayar saat diterima":"Menunggu pembayaran",paymentProofUrl:"",status:"Menunggu konfirmasi",createdAt:serverTimestamp(),updatedAt:serverTimestamp()};
+    const productSubtotal=Number(product.price)*quantity,orderServiceFee=serviceFee,orderDeliveryFee=deliveryFee,total=productSubtotal+orderServiceFee+orderDeliveryFee;
+    const order={orderNumber,checkoutGroup:orderNumber,itemIndex:index+1,itemCount:normalized.length,productId,productName:String(product.name||""),category:String(product.category||""),photo:String(product.photo||""),storeName:String(product.store||""),sellerId:String(product.ownerId||""),customerId:user.uid,customerEmail:user.email||"",customerName,phone,address:fulfillmentMethod==="Pickup"?"Ambil sendiri":address,note:String(data.note||"").trim(),quantity,unitPrice:Number(product.price),productSubtotal,serviceFee:orderServiceFee,fulfillmentMethod,deliveryFee:orderDeliveryFee,shippingFee:orderDeliveryFee,total,paymentMethod:String(data.paymentMethod||"COD"),paymentStatus:String(data.paymentMethod||"COD")==="COD"?"Bayar saat diterima":"Menunggu pembayaran",paymentProofUrl:"",status:"Menunggu konfirmasi",createdAt:serverTimestamp(),updatedAt:serverTimestamp()};
     batch.set(ref,order);
   });
   await batch.commit();
@@ -175,7 +181,7 @@ window.ppCreateOrders = async data => {
 };
 window.ppCreateOrder = async data => window.ppCreateOrders({...data,items:[{productId:data.productId,quantity:data.quantity||1}]});
 
-const defaultPaymentSettings={bankName:"",bankAccountName:"",bankAccountNumber:"",qrisImageUrl:"",ewalletName:"",ewalletNumber:"",instructions:"Silakan bayar sesuai total pesanan. Unggah bukti pembayaran di halaman Pesanan Saya. Pesanan diproses setelah admin memverifikasi pembayaran."};
+const defaultPaymentSettings={bankName:"",bankAccountName:"",bankAccountNumber:"",qrisImageUrl:"",ewalletName:"",ewalletNumber:"",serviceFee:0,deliveryFee:0,instructions:"Silakan bayar sesuai total pesanan. Unggah bukti pembayaran di halaman Pesanan Saya. Pesanan diproses setelah admin memverifikasi pembayaran."};
 window.ppGetPaymentSettings=async()=>{
   if(!firebaseReady)throw new Error("Konfigurasi Firebase belum tersedia.");
   const snap=await getDoc(doc(db,"paymentSettings","main"));
@@ -184,7 +190,7 @@ window.ppGetPaymentSettings=async()=>{
 window.ppSavePaymentSettings=async data=>{
   const user=auth.currentUser;if(!user)throw new Error("Silakan masuk sebagai admin.");
   const profile=await profileFor(user);if(profile?.role!=="admin")throw new Error("Hanya admin yang dapat mengatur tujuan pembayaran.");
-  const settings={bankName:String(data.bankName||"").trim(),bankAccountName:String(data.bankAccountName||"").trim(),bankAccountNumber:String(data.bankAccountNumber||"").trim(),qrisImageUrl:String(data.qrisImageUrl||"").trim(),ewalletName:String(data.ewalletName||"").trim(),ewalletNumber:String(data.ewalletNumber||"").trim(),instructions:String(data.instructions||defaultPaymentSettings.instructions).trim(),updatedAt:serverTimestamp(),updatedBy:user.uid};
+  const settings={bankName:String(data.bankName||"").trim(),bankAccountName:String(data.bankAccountName||"").trim(),bankAccountNumber:String(data.bankAccountNumber||"").trim(),qrisImageUrl:String(data.qrisImageUrl||"").trim(),ewalletName:String(data.ewalletName||"").trim(),ewalletNumber:String(data.ewalletNumber||"").trim(),serviceFee:Math.max(0,Math.floor(Number(data.serviceFee)||0)),deliveryFee:Math.max(0,Math.floor(Number(data.deliveryFee)||0)),instructions:String(data.instructions||defaultPaymentSettings.instructions).trim(),updatedAt:serverTimestamp(),updatedBy:user.uid};
   await setDoc(doc(db,"paymentSettings","main"),settings,{merge:true});
   return {ok:true,message:"Pengaturan pembayaran berhasil disimpan."};
 };
