@@ -45,3 +45,9 @@ Dokumen `paymentSettings/main` menyimpan pengaturan tujuan pembayaran. Setiap do
 - Tabel riwayat, pesanan, produk, pengajuan penjual, dan verifikasi pembayaran berubah menjadi kartu pada layar kecil sehingga tidak perlu menggeser tabel lebar ke samping.
 - Dasbor pelanggan, penjual, dan admin memakai jarak, panel, tombol, dan kartu statistik yang disesuaikan untuk layar kecil.
 - Perubahan ini hanya menyentuh tampilan dan alur modal; integrasi Firebase, metode pembayaran, biaya jasa/ongkir, chat, dan checkout dipertahankan.
+
+
+## Perbaikan daftar chat admin dan keranjang akun
+- Keranjang sekarang disimpan terpisah berdasarkan UID akun pada perangkat yang sama. Key keranjang lama yang dipakai bersama dihapus saat versi ini dimuat agar isi akun sebelumnya tidak bocor ke akun lain. Keranjang lama mungkin perlu diisi ulang.
+- Admin dapat melihat daftar percakapan, membaca pesan, dan membalas sebagai Admin.
+- Setelah memasang versi ini, terbitkan aturan baru dari `firestore.rules` di Firebase Console → Firestore Database → Rules.

@@ -324,12 +324,12 @@ window.ppLoadChats = async () => {
   if(profile.role==="admin")snap=await getDocs(collection(db,"chats"));
   else if(profile.role==="seller")snap=await getDocs(query(collection(db,"chats"),where("sellerId","==",user.uid)));
   else snap=await getDocs(query(collection(db,"chats"),where("customerId","==",user.uid)));
-  return snap.docs.map(d=>{const c=d.data();return {id:d.id,...c,peerName:user.uid===c.sellerId?c.customerName:(c.storeName||"Penjual")};}).sort((a,b)=>(b.updatedAt?.toMillis?.()||0)-(a.updatedAt?.toMillis?.()||0));
+  return snap.docs.map(d=>{const c=d.data();const peerName=profile.role==="admin"?`${c.customerName||"Pembeli"} · ${c.storeName||"Toko"}`:(user.uid===c.sellerId?(c.customerName||"Pembeli"):(c.storeName||"Penjual"));return {id:d.id,...c,peerName};}).sort((a,b)=>(b.updatedAt?.toMillis?.()||0)-(a.updatedAt?.toMillis?.()||0));
 };
 window.ppLoadChatMessages = async chatId => {
   const user=auth.currentUser;if(!user)throw new Error("Silakan masuk terlebih dahulu.");
   const chatSnap=await getDoc(doc(db,"chats",String(chatId)));if(!chatSnap.exists())throw new Error("Percakapan tidak ditemukan.");
-  const c=chatSnap.data();if(user.uid!==c.customerId&&user.uid!==c.sellerId)throw new Error("Anda tidak memiliki akses ke percakapan ini.");
+  const c=chatSnap.data();const profile=await profileFor(user);if(user.uid!==c.customerId&&user.uid!==c.sellerId&&profile?.role!=="admin")throw new Error("Anda tidak memiliki akses ke percakapan ini.");
   const snap=await getDocs(collection(db,"chats",String(chatId),"messages"));
   return snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.createdAt?.toMillis?.()||0)-(b.createdAt?.toMillis?.()||0));
 };
@@ -337,8 +337,8 @@ window.ppSendChatMessage = async ({chatId,message}) => {
   const user=auth.currentUser;if(!user)throw new Error("Silakan masuk terlebih dahulu.");
   const text=String(message||"").trim();if(!text)throw new Error("Tulis pesan terlebih dahulu.");if(text.length>2000)throw new Error("Pesan maksimal 2.000 karakter.");
   const ref=doc(db,"chats",String(chatId)),snap=await getDoc(ref);if(!snap.exists())throw new Error("Percakapan tidak ditemukan.");const c=snap.data();
-  if(user.uid!==c.customerId&&user.uid!==c.sellerId)throw new Error("Anda tidak memiliki akses ke percakapan ini.");
-  const profile=await profileFor(user);await addDoc(collection(db,"chats",String(chatId),"messages"),{senderId:user.uid,senderName:String(profile?.displayName||profile?.storeName||(profile?.role==="seller"?"Penjual":profile?.role==="admin"?"Admin":"Pembeli")),message:text,createdAt:serverTimestamp()});
+  const profile=await profileFor(user);if(user.uid!==c.customerId&&user.uid!==c.sellerId&&profile?.role!=="admin")throw new Error("Anda tidak memiliki akses ke percakapan ini.");
+  await addDoc(collection(db,"chats",String(chatId),"messages"),{senderId:user.uid,senderName:String(profile?.displayName||profile?.storeName||(profile?.role==="seller"?"Penjual":profile?.role==="admin"?"Admin":"Pembeli")),message:text,createdAt:serverTimestamp()});
   await updateDoc(ref,{lastMessage:text,updatedAt:serverTimestamp()});return {ok:true};
 };
 

@@ -58,13 +58,13 @@ service cloud.firestore {
         && (request.auth.uid == request.resource.data.customerId || request.auth.uid == request.resource.data.sellerId)
         && request.resource.data.participants is list
         && request.resource.data.participants.hasAll([request.resource.data.customerId, request.resource.data.sellerId]);
-      allow get: if signedIn() && (chatId.matches('.*' + request.auth.uid + '.*') || request.auth.uid == resource.data.customerId || request.auth.uid == resource.data.sellerId);
-      allow list: if signedIn() && (request.auth.uid == resource.data.customerId || request.auth.uid == resource.data.sellerId);
-      allow update: if signedIn()
+      allow get: if isAdmin() || (signedIn() && (chatId.matches('.*' + request.auth.uid + '.*') || request.auth.uid == resource.data.customerId || request.auth.uid == resource.data.sellerId));
+      allow list: if isAdmin() || (signedIn() && (request.auth.uid == resource.data.customerId || request.auth.uid == resource.data.sellerId));
+      allow update: if isAdmin() || (signedIn()
         && (request.auth.uid == resource.data.customerId || request.auth.uid == resource.data.sellerId)
         && request.resource.data.customerId == resource.data.customerId
         && request.resource.data.sellerId == resource.data.sellerId
-        && request.resource.data.participants == resource.data.participants;
+        && request.resource.data.participants == resource.data.participants);
       allow delete: if isAdmin();
 
       match /messages/{messageId} {
@@ -72,8 +72,8 @@ service cloud.firestore {
         function isChatParticipant() {
           return signedIn() && (request.auth.uid == chatDoc().data.customerId || request.auth.uid == chatDoc().data.sellerId);
         }
-        allow read: if isChatParticipant();
-        allow create: if isChatParticipant()
+        allow read: if isChatParticipant() || isAdmin();
+        allow create: if (isChatParticipant() || isAdmin())
           && request.resource.data.senderId == request.auth.uid
           && request.resource.data.message is string
           && request.resource.data.message.size() > 0
