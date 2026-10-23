@@ -37,3 +37,11 @@ Dokumen `paymentSettings/main` menyimpan pengaturan tujuan pembayaran. Setiap do
 - Setiap dokumen pesanan menyimpan `productSubtotal`, `serviceFee`, `fulfillmentMethod`, `deliveryFee`, `shippingFee`, dan `total`. Total dihitung oleh integrasi berdasarkan harga produk serta pengaturan Firebase yang tersimpan; angka yang dikirim dari halaman checkout tidak dijadikan sumber biaya.
 - Untuk checkout multi-produk, aplikasi membuat satu dokumen pesanan untuk setiap jenis produk. Karena itu biaya jasa dikenakan pada setiap dokumen pesanan; biaya kirim juga dihitung per dokumen pesanan jika memilih pengiriman. Atur biaya admin dengan mempertimbangkan perilaku ini.
 - Pesanan yang sudah dibuat menyimpan nilai biaya pada saat checkout. Perubahan tarif oleh admin berlaku untuk pesanan baru, tidak mengubah pesanan lama.
+
+## Pembaruan tampilan responsif dan modal
+
+- Form tambah/edit produk, checkout, edit profil, pengajuan toko, pengaturan pembayaran, dan perubahan status pesanan ditampilkan dalam modal.
+- Pada smartphone, modal berubah menjadi lembar dari bagian bawah layar, dengan tombol yang mudah disentuh dan area isi yang dapat digulir.
+- Tabel riwayat, pesanan, produk, pengajuan penjual, dan verifikasi pembayaran berubah menjadi kartu pada layar kecil sehingga tidak perlu menggeser tabel lebar ke samping.
+- Dasbor pelanggan, penjual, dan admin memakai jarak, panel, tombol, dan kartu statistik yang disesuaikan untuk layar kecil.
+- Perubahan ini hanya menyentuh tampilan dan alur modal; integrasi Firebase, metode pembayaran, biaya jasa/ongkir, chat, dan checkout dipertahankan.
