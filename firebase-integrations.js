@@ -1,7 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, addDoc, getDocs, query, where, serverTimestamp, orderBy, writeBatch } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
-import { firebaseConfig, cloudinaryConfig } from "./config.js";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, addDoc, getDocs, query, where, serverTimestamp, orderBy, writeBatch, onSnapshot, limit } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
+import { firebaseConfig, cloudinaryConfig, oneSignalConfig } from "./config.js";
 
 const bad = v => !v || String(v).startsWith("GANTI_DENGAN_");
 const firebaseReady = !Object.values(firebaseConfig).some(bad);
@@ -342,11 +342,26 @@ window.ppSendChatMessage = async ({chatId,message}) => {
   await updateDoc(ref,{lastMessage:text,updatedAt:serverTimestamp()});return {ok:true};
 };
 
-window.ppLogout = async () => {if(auth){await signOut(auth);window.ppUpdateAccountState?.(null,null);setStatus("Belum masuk.");const account=document.getElementById("accountPage");if(account?.classList.contains("active"))showPage("home");}};
+// Notifikasi realtime Firestore. Dokumen notifications harus dibuat oleh backend tepercaya/admin.
+let notificationUnsubscribe=null;let notificationCache=[];
+window.ppLoadNotifications=async()=>{
+ const list=document.getElementById('notificationList');if(!auth?.currentUser){window.ppSetNotifications?.([]);if(list)list.innerHTML='<div class="empty">Masuk untuk melihat notifikasi akun Anda.</div>';return [];}
+ try{const q=query(collection(db,"notifications"),where("recipientId","==",auth.currentUser.uid),orderBy("createdAt","desc"),limit(100));const snap=await getDocs(q);notificationCache=snap.docs.map(d=>({id:d.id,...d.data()}));window.ppSetNotifications?.(notificationCache);return notificationCache;}catch(e){console.warn("Gagal memuat notifikasi:",e);if(list)list.innerHTML='<div class="empty">Notifikasi belum dapat dimuat. Periksa Firestore Rules dan indeks Firebase.</div>';return [];}
+};
+window.ppStartNotificationListener=()=>{if(!auth?.currentUser||notificationUnsubscribe)return;try{const q=query(collection(db,"notifications"),where("recipientId","==",auth.currentUser.uid),orderBy("createdAt","desc"),limit(100));notificationUnsubscribe=onSnapshot(q,snap=>{notificationCache=snap.docs.map(d=>({id:d.id,...d.data()}));window.ppSetNotifications?.(notificationCache);},e=>console.warn("Listener notifikasi:",e));}catch(e){console.warn("Tidak dapat memulai listener notifikasi:",e);}};
+window.ppStopNotificationListener=()=>{notificationUnsubscribe?.();notificationUnsubscribe=null;notificationCache=[];window.ppSetNotifications?.([]);};
+window.ppMarkNotificationRead=async id=>{if(!auth?.currentUser)throw new Error("Silakan masuk terlebih dahulu.");const ref=doc(db,"notifications",String(id)),snap=await getDoc(ref);if(!snap.exists())return;if(snap.data().recipientId!==auth.currentUser.uid)throw new Error("Notifikasi bukan milik akun ini.");await updateDoc(ref,{readAt:serverTimestamp()});};
+window.ppMarkAllNotificationsRead=async()=>{if(!auth?.currentUser)throw new Error("Silakan masuk terlebih dahulu.");const unread=notificationCache.filter(n=>!n.readAt);const batch=writeBatch(db);unread.forEach(n=>batch.update(doc(db,"notifications",n.id),{readAt:serverTimestamp()}));if(unread.length)await batch.commit();};
+// Web SDK OneSignal opsional. ID aplikasi publik berasal dari config.js; REST API Key tidak boleh ada di sini.
+if(oneSignalConfig?.appId&&!String(oneSignalConfig.appId).startsWith("GANTI_DENGAN_")){
+ window.OneSignalDeferred=window.OneSignalDeferred||[];window.OneSignalDeferred.push(async OneSignal=>{try{await OneSignal.init({appId:oneSignalConfig.appId,notifyButton:{enable:false}});OneSignal.Notifications.addEventListener("click",event=>{const target=event?.notification?.launchURL||event?.notification?.additionalData?.url||`${location.origin}${location.pathname}?page=notifications`;location.href=target;});}catch(e){console.warn("OneSignal belum siap:",e);}});
+}
+
+window.ppLogout = async () => {window.ppStopNotificationListener?.();if(auth){await signOut(auth);window.ppUpdateAccountState?.(null,null);setStatus("Belum masuk.");const account=document.getElementById("accountPage");if(account?.classList.contains("active"))showPage("home");}};
 if(firebaseReady){
   persistenceReady.then(()=>{
     onAuthStateChanged(auth,async user=>{
-      if(!user){window.ppUpdateAccountState?.(null,null);setStatus("Belum masuk.");return;}
+      if(!user){window.ppStopNotificationListener?.();window.ppUpdateAccountState?.(null,null);setStatus("Belum masuk.");return;}
       try{
         const p=await profileFor(user);
         if(!p){
@@ -355,7 +370,7 @@ if(firebaseReady){
           setStatus(`${user.email||"Akun masuk"} · profil belum lengkap`);
           return;
         }
-        window.ppUpdateAccountState?.(user,p);
+        window.ppUpdateAccountState?.(user,p);window.ppStartNotificationListener?.();
         if(window.ppOnRoleChange)window.ppOnRoleChange(p.role||"");
         setStatus(`${p.displayName||user.email} · ${p.role||"pelanggan"}${p.role==="seller"?` · status toko: ${p.sellerStatus||"pending"}`:""}`);
       }catch(e){

@@ -16,3 +16,6 @@ export const cloudinaryConfig = {
   cloudName: "de9cjc54n",
   uploadPreset: "bedvep_preser"
 };
+
+// OneSignal App ID bersifat publik. Jangan pernah menaruh REST API Key di frontend.
+export const oneSignalConfig = { appId: "GANTI_DENGAN_ONESIGNAL_APP_ID" };

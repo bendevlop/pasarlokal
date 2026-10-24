@@ -51,7 +51,15 @@ service cloud.firestore {
     }
 
 
-    match /chats/{chatId} {
+    match /notifications/{notificationId} {
+      allow read: if signedIn() && resource.data.recipientId == request.auth.uid;
+      allow update: if signedIn() && resource.data.recipientId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt']);
+      // Pembuatan notifikasi dilakukan backend tepercaya, bukan dari browser pelanggan.
+      allow create, delete: if isAdmin();
+    }
+
+  match /chats/{chatId} {
       allow create: if signedIn()
         && request.resource.data.customerId is string
         && request.resource.data.sellerId is string
