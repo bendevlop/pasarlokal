@@ -9,7 +9,7 @@ service cloud.firestore {
     match /users/{uid} {
       allow create: if signedIn() && request.auth.uid == uid
         && request.resource.data.uid == uid
-        && request.resource.data.role in ['customer', 'seller']
+        && request.resource.data.role in ['customer', 'seller', 'driver']
         && (request.resource.data.role != 'seller' || request.resource.data.sellerStatus == 'pending');
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
       allow update: if isAdmin() || (signedIn() && request.auth.uid == uid
@@ -17,6 +17,16 @@ service cloud.firestore {
         && request.resource.data.sellerStatus == resource.data.sellerStatus
         && request.resource.data.uid == resource.data.uid);
       allow delete: if isAdmin();
+    }
+
+    match /driverPresence/{uid} {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && userDoc(uid).data.role == 'driver'
+        && request.resource.data.uid == uid
+        && request.resource.data.online is bool
+        && request.resource.data.phone is string;
+      allow delete: if signedIn() && request.auth.uid == uid;
     }
 
     match /sellerApplications/{uid} {
@@ -107,10 +117,14 @@ service cloud.firestore {
         || resource.data.buyerId == request.auth.uid
         || resource.data.userId == request.auth.uid
         || resource.data.sellerId == request.auth.uid
+        || resource.data.assignedDriverUid == request.auth.uid
         || resource.data.customerEmail == request.auth.token.email
         || resource.data.email == request.auth.token.email
       ));
       allow update: if isAdmin()
+        || (signedIn() && resource.data.assignedDriverUid == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','updatedAt'])
+          && request.resource.data.status in ['Diproses','Dikirim','Selesai','Dibatalkan'])
         || (signedIn() && resource.data.sellerId == request.auth.uid
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','updatedAt'])
           && request.resource.data.status in ['Menunggu konfirmasi','Diproses','Dikirim','Selesai','Dibatalkan'])

@@ -44,13 +44,13 @@ window.ppAuth = async ({mode,email,password,role}) => {
   await persistenceReady;
   let credential;
   if(mode==="register"){
-    if(!["customer","seller"].includes(role)) role="customer";
+    if(!["customer","seller","driver"].includes(role)) role="customer";
     credential=await createUserWithEmailAndPassword(auth,email,password);
     try {
       await setDoc(doc(db,"users",credential.user.uid),{
         uid:credential.user.uid,email:credential.user.email,role,
         sellerStatus:role==="seller"?"pending":"not_applicable",
-        storeName:role==="seller"?email.split("@")[0]:"",
+        storeName:role==="seller"?email.split("@")[0]:"", isOnline:false, phone:"", displayName:"",
         createdAt:serverTimestamp()
       });
     } catch (e) {
@@ -82,6 +82,23 @@ window.ppSaveProfile = async data => {
   const updated=await profileFor(user);window.ppUpdateAccountState?.(user,updated);
   return {ok:true,message:"Profil pelanggan berhasil disimpan."};
 };
+window.ppSaveDriverProfile = async data => {
+  if(!firebaseReady)throw new Error("Layanan belum siap.");const user=auth.currentUser;if(!user)throw new Error("Silakan masuk terlebih dahulu.");
+  const profile=await profileFor(user);if(profile?.role!=="driver")throw new Error("Fitur ini hanya untuk akun driver.");
+  const displayName=String(data.displayName||"").trim(),phone=String(data.phone||"").trim();if(!displayName||!phone)throw new Error("Nama dan nomor WhatsApp wajib diisi.");
+  await updateDoc(doc(db,"users",user.uid),{displayName,phone,updatedAt:serverTimestamp()});
+  if(profile.isOnline) await setDoc(doc(db,"driverPresence",user.uid),{uid:user.uid,displayName,phone,online:true,lastSeenAt:serverTimestamp(),updatedAt:serverTimestamp()});
+  const updated=await profileFor(user);window.ppUpdateAccountState?.(user,updated);return {ok:true};
+};
+window.ppSetDriverOnline = async data => {
+  if(!firebaseReady)throw new Error("Layanan belum siap.");const user=auth.currentUser;if(!user)throw new Error("Silakan masuk terlebih dahulu.");
+  const profile=await profileFor(user);if(profile?.role!=="driver")throw new Error("Fitur ini hanya untuk akun driver.");
+  const displayName=String(data.displayName||profile.displayName||"").trim(),phone=String(data.phone||profile.phone||"").trim();if(!displayName||!phone)throw new Error("Lengkapi nama dan nomor WhatsApp driver.");
+  await updateDoc(doc(db,"users",user.uid),{displayName,phone,isOnline:!!data.online,lastSeenAt:serverTimestamp(),updatedAt:serverTimestamp()});
+  await setDoc(doc(db,"driverPresence",user.uid),{uid:user.uid,displayName,phone,online:!!data.online,lastSeenAt:serverTimestamp(),updatedAt:serverTimestamp()});
+  return {ok:true};
+};
+
 window.ppApplySeller = async data => {
   if(!firebaseReady)throw new Error("Layanan belum siap. Periksa koneksi internet atau coba kembali nanti.");
   const user=auth.currentUser;if(!user)throw new Error("Silakan masuk terlebih dahulu.");
@@ -169,15 +186,21 @@ window.ppCreateOrders = async data => {
   const serviceFee=Math.max(0,Math.floor(Number(feeSettings.serviceFee)||0));
   const deliveryFee=fulfillmentMethod==="Pickup"?0:Math.max(0,Math.floor(Number(feeSettings.deliveryFee)||0));
   const orderNumber="PP-"+Date.now().toString().slice(-8)+"-"+Math.random().toString(36).slice(2,5).toUpperCase();
+  // Pilih satu driver online secara acak untuk seluruh checkout. Presence ditulis oleh akun driver.
+  let assignedDriver=null;
+  if(String(data.fulfillmentMethod||"Delivery")==="Delivery"){
+    try{const onlineSnap=await getDocs(query(collection(db,"driverPresence"),where("online","==",true)));const candidates=onlineSnap.docs.map(d=>({id:d.id,...d.data()})).filter(d=>d.uid&&d.phone&&d.online===true);if(candidates.length)assignedDriver=candidates[Math.floor(Math.random()*candidates.length)];}catch(e){console.warn("Driver online belum dapat diperiksa:",e);}
+  }
+  const driverWhatsappUrl=assignedDriver?`https://wa.me/${String(assignedDriver.phone).replace(/\D/g,"").replace(/^0/,"62")}?text=${encodeURIComponent(`Pesanan baru Pasar Purwakarta\nNo: ${orderNumber}\nPembeli: ${String(data.customerName||"")}\nWhatsApp: ${String(data.phone||"")}\nAlamat: ${String(data.address||"")}\nMohon konfirmasi ketersediaan pengantaran.`)}`:"";
   const batch=writeBatch(db),ids=[];
   normalized.forEach(({productId,product,quantity},index)=>{
     const ref=doc(collection(db,"orders"));ids.push(ref.id);
     const productSubtotal=Number(product.price)*quantity,orderServiceFee=serviceFee,orderDeliveryFee=deliveryFee,total=productSubtotal+orderServiceFee+orderDeliveryFee;
-    const order={orderNumber,checkoutGroup:orderNumber,itemIndex:index+1,itemCount:normalized.length,productId,productName:String(product.name||""),category:String(product.category||""),photo:String(product.photo||""),storeName:String(product.store||""),sellerId:String(product.ownerId||""),customerId:user.uid,customerEmail:user.email||"",customerName,phone,address:fulfillmentMethod==="Pickup"?"Ambil sendiri":address,note:String(data.note||"").trim(),quantity,unitPrice:Number(product.price),productSubtotal,serviceFee:orderServiceFee,fulfillmentMethod,deliveryFee:orderDeliveryFee,shippingFee:orderDeliveryFee,total,paymentMethod:String(data.paymentMethod||"COD"),paymentStatus:String(data.paymentMethod||"COD")==="COD"?"Bayar saat diterima":"Menunggu pembayaran",paymentProofUrl:"",status:"Menunggu konfirmasi",createdAt:serverTimestamp(),updatedAt:serverTimestamp()};
+    const order={orderNumber,checkoutGroup:orderNumber,itemIndex:index+1,itemCount:normalized.length,productId,productName:String(product.name||""),category:String(product.category||""),photo:String(product.photo||""),storeName:String(product.store||""),sellerId:String(product.ownerId||""),customerId:user.uid,customerEmail:user.email||"",customerName,phone,address:fulfillmentMethod==="Pickup"?"Ambil sendiri":address,note:String(data.note||"").trim(),quantity,unitPrice:Number(product.price),productSubtotal,serviceFee:orderServiceFee,fulfillmentMethod,deliveryFee:orderDeliveryFee,shippingFee:orderDeliveryFee,total,paymentMethod:String(data.paymentMethod||"COD"),paymentStatus:String(data.paymentMethod||"COD")==="COD"?"Bayar saat diterima":"Menunggu pembayaran",paymentProofUrl:"",assignedDriverUid:assignedDriver?.uid||"",assignedDriverName:assignedDriver?.displayName||"",assignedDriverPhone:assignedDriver?.phone||"",status:"Menunggu konfirmasi",createdAt:serverTimestamp(),updatedAt:serverTimestamp()};
     batch.set(ref,order);
   });
   await batch.commit();
-  return {ok:true,id:ids[0],ids,orderNumber,count:normalized.length};
+  return {ok:true,id:ids[0],ids,orderNumber,count:normalized.length,driverUid:assignedDriver?.uid||"",driverName:assignedDriver?.displayName||"",driverWhatsappUrl};
 };
 window.ppCreateOrder = async data => window.ppCreateOrders({...data,items:[{productId:data.productId,quantity:data.quantity||1}]});
 
@@ -243,6 +266,7 @@ window.ppLoadOrders = async () => {
       await safeQuery("pesanan berdasarkan buyerId",query(refs,where("buyerId","==",user.uid)));
       await safeQuery("pesanan berdasarkan userId",query(refs,where("userId","==",user.uid)));
       if(profile.role==="seller") await safeQuery("pesanan toko",query(refs,where("sellerId","==",user.uid)));
+      if(profile.role==="driver") await safeQuery("pesanan driver",query(refs,where("assignedDriverUid","==",user.uid)));
       if(user.email){
         await safeQuery("pesanan berdasarkan email pembeli",query(refs,where("customerEmail","==",user.email)));
         await safeQuery("pesanan lama berdasarkan email",query(refs,where("email","==",user.email)));
